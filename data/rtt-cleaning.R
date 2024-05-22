@@ -1,4 +1,7 @@
 ##### Clean RTT data for waiting list interactive calculator #####
+# Sam's version
+# Define custom colors
+mycolours <- c("#DC2937", "#005c5d", "#744284", "#744284", "#2ca365", "#f39214", "#ffd412", "#092a40")
 
 # load packages
 library(readxl)
@@ -7,8 +10,83 @@ library(janitor)
 library(lubridate)
 library(dplyr)
 library(zoo)
+library(tidyverse)
+library(data.table)
+
  
 ##### Load raw data (download from https://www.england.nhs.uk/statistics/statistical-work-areas/rtt-waiting-times/)
+
+# Functions to fetch and process data
+
+GetLinks <- function(url_name, string) {
+  files <- c()
+  for (i in seq_along(url_name)) {
+    pg <- rvest::read_html(url_name[i])
+    pg <- rvest::html_attr(rvest::html_nodes(pg, "a"), "href")
+    files <- c(files, pg[grepl(string, pg, ignore.case = TRUE)])
+    files <- unique(files)
+  }
+  return(files)
+}
+
+UnzipCSV <- function(file) {
+  temp <- tempfile()
+  download.file(file, temp)
+  file_names <- unzip(temp, list = TRUE)$Name
+  csv_files <- file_names[grepl('.csv', file_names)]
+  data <- lapply(csv_files, function(x) {
+    dirty_data <- unzip(temp, x, exdir = tempdir())
+    CleanFiles(dirty_data, dirty_data)
+    cleaned_data <- fread(dirty_data, encoding = "UTF-8")
+    names(cleaned_data) <- make_clean_names(names(cleaned_data))
+    return(cleaned_data)
+  })
+  names(data) <- csv_files
+  unlink(temp)
+  return(data)
+}
+
+CleanFiles <- function(file, newfile) {
+  writeLines(iconv(readLines(file, skipNul = TRUE)), newfile)
+}
+
+# Scrape data, Urls for datasets 
+
+rtt_url <- "https://england.nhs.uk/statistics/statistical-work-areas/rtt-waiting-times/rtt-data-2023-24/"
+rtt_links <- GetLinks(rtt_url, "statistical-work-areas/rtt-waiting-times/rtt-data-")
+rtt_link_final <- GetLinks(rtt_links, 'Full-CSV-data')
+
+# Take last 10 datasets
+
+rtt_results <- rtt_link_final[1:10]
+# Read data
+rtt_data <- sapply(rtt_results,
+                   function(x){
+                     UnzipCSV(x)
+                   })
+
+#Apply function to all .zip links
+
+FINAL_rtt <- lapply(rtt_data,
+                    function(x){
+                      x %>%
+                        dplyr::mutate(all_rtt = total_all,
+                                      date = zoo::as.yearmon(substr(period, 5, 99), '%B-%Y')) %>%
+                        #Remove all the columns that are 'waiting 18 to 20 weeks' or whatever,
+                        #We aren't using them and there is mismatch after 2019/20
+                        dplyr::select(-starts_with('gt')) %>%
+                        #Select ALL specialties
+                        #dplyr::filter(treatment_function_name == 'Total') %>%
+                        dplyr::rename( 'trust_code' = provider_org_code)
+                    }) %>%
+  #collapse the list
+  data.table::rbindlist(fill=T) %>%
+  #remove treatment_function_name if needed?
+  dplyr::group_by(date,treatment_function_code,treatment_function_name,rtt_part_description,trust_code) %>%
+  dplyr::summarise(all_rtt = sum(all_rtt,na.rm=T)) %>%
+  #Useful for left_joins
+  tidyr::pivot_wider(.,names_from=rtt_part_description,values_from=all_rtt)
+
 
 ##### initial formatting of raw data #####
 
