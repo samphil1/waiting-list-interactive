@@ -86,13 +86,14 @@ FINAL_rtt <- lapply(rtt_data,
   dplyr::summarise(all_rtt = sum(all_rtt,na.rm=T)) %>%
   #Useful for left_joins
   tidyr::pivot_wider(.,names_from=rtt_part_description,values_from=all_rtt)
-
+FINAL_rtt
 
 ##### initial formatting of raw data #####
 
-rtt_data_raw <- read.xlsx("data/rtt-data.xlsx", na.strings = "-", startRow = 11, fillMergedCells = TRUE, skipEmptyCols = TRUE)
+rtt_data_raw <- read.xlsx("data/RTT-Overview-Timeseries-Including-Estimates-for-Missing-Trusts-Mar24-XLS-103K-16220.xlsx", na.strings = "-", startRow = 11, fillMergedCells = TRUE, skipEmptyCols = TRUE)
 
-rtt_data_raw$X2 <- convert_to_date(rtt_data_raw$X2)
+rtt_data_raw[204, 2] <- 45323
+rtt_data_raw$Month <- convert_to_date(rtt_data_raw$Month)
 
 # add the merged column headers back in as part of colnames
 names(rtt_data_raw)[3:20] <- paste0("incomplete_", names(rtt_data_raw)[3:20])
@@ -104,9 +105,7 @@ names(rtt_data_raw)[35:39] <- paste0("admitted_adj_", names(rtt_data_raw)[35:39]
 # final cleaning of names
 rtt_data_raw <- rtt_data_raw %>% 
   clean_names() %>% 
-  rename(fiscal_year = x1, month_year = x2)
-
-latest_data <- ymd("2023-08-01")
+  rename(fiscal_year = year, month_year = month)
 
 ##### Clean data #####
 
